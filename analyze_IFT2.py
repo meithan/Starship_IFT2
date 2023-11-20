@@ -11,20 +11,20 @@ from ISA1976 import ISA1976
 from Orbits import Orbit
 from SolarSystem import Earth
 
-# =======================================
+# ==============================================================================
 
 save = "--save" in sys.argv
 
 combined_plot = True
 
 events = [
-  ["Max Q", 57, 0.15, -15],
+  ["Max Q", 60.5, 0.15, -15],
   ["MECO", 120+39, 0.7, -15],
   ["Stage sep", 120+50, 0.7, 3],
   ["Shutdown", 8*60+3, 0.6, -15],
 ]
 
-# =======================================
+# ==============================================================================
 
 def parse_float(s):
   try:
@@ -51,9 +51,10 @@ def impute_missing_values(xs, ys):
     i += 1
 
 def smoothen(values):
-  return savgol_filter(values, 30, 3)
+  # return moving_average(values, 30)
+  return savgol_filter(values, 31, 1)
 
-# --------------------------------------
+# ==============================================================================
  
 # Load data (own scraping)
 fname = "data/IFT2_telemetry.csv"
@@ -84,7 +85,6 @@ altitude = smoothen(raw_altitude)
 
 # Speed in inertial Earth-centered frame
 vrot = 465*cos(radians(18))
-orb_speed = speed + vrot
 
 # Acceleration
 accel = np.gradient(speed, time)
@@ -100,7 +100,7 @@ speed_numer = np.sqrt(hspeed**2 + vspeed**2)
 # Acceleration components
 haccel = smoothen(np.gradient(hspeed, time))
 vaccel = smoothen(np.gradient(vspeed, time))
-accel_numer = smoothen(np.sqrt(haccel**2 + vaccel**2))
+accel_numer = np.sqrt(haccel**2 + vaccel**2)
 
 # Horizontal (downrange) distance
 hdist = []
@@ -114,7 +114,7 @@ for i in range(len(time)):
     x += vx*(t-tlast)
     hdist.append(x)
     tlast = t
-hdist = np.array(hdist) / 1e3
+hdist = np.array(hdist)
 
 # Mach number and dynamic pressure
 atmo = ISA1976()
@@ -138,27 +138,35 @@ for i in range(len(time)):
 Mach = np.array(Mach)
 dynpres = np.array(dynpres)
 
-# Orbital energy
+# Orbital state vectors (position and velocity vectors)
+# The trajectory is assumed to be contained in a vertical xy plane
 RE = 6372
 mu = 3.986004418e14
-radius = altitude + RE*1e3
-energy = orb_speed**2/2 - mu/radius
+pos_orb = []; vel_orb = []
+for i in range(len(time)):
+  pos_orb.append((hdist[i], altitude[i]+RE*1e3, 0))
+  vel_orb.append((hspeed[i]+vrot, vspeed[i], 0))
+pos_orb = np.array(pos_orb)
+vel_orb = np.array(vel_orb)
+
+# Orbital energy
+radius = np.linalg.norm(pos_orb, axis=1)
+speed_orb = np.linalg.norm(vel_orb, axis=1)
+energy = speed_orb**2/2 - mu/radius
 a = (RE+100)*1e3
 E_orbit = -mu/(2*a)
 E_surf = -mu/(RE*1e3)
 # print(E_orbit/1e6, E_surf/1e6, energy[-1]/1e6)
 
 # Osculating orbits
-peris = []
+perigee = [-RE, -RE]
 for i in range(2, len(time)):
-  vel = (hspeed[i]+vrot, vspeed[i], 0)
-  pos = (0, altitude[i]+RE*1e3, 0)
   orb = Orbit(Earth)
-  orb.from_state_vectors(pos, vel, dtm.datetime(2023, 11, 18))
+  orb.from_state_vectors(pos_orb[i], vel_orb[i], dtm.datetime(2023, 11, 18))
   hpe = np.linalg.norm(orb.get_periapsis())/1e3 - RE
-  peris.append(hpe)
+  perigee.append(hpe)
 
-# =====================================
+# ==============================================================================
 # PLOTS
 
 if combined_plot:
@@ -175,7 +183,7 @@ if combined_plot:
 else:
   plt.figure(figsize=(8,6))
 
-plt.title("Altitude & Speed (raw telemetry, smoothed)")
+plt.title("Altitude & Speed (telemetry, smoothed)")
 handles = []
 
 # Altitude
@@ -327,7 +335,7 @@ plt.axhline(0, color="gray", zorder=-10)
 x1, x2 = plt.xlim()
 plt.ylim(-1, 155)
 plt.grid(ls=":")
-plt.title("Trajectory profile (planar, not to scale)")
+plt.title("Trajectory profile (planar, unequal aspect)")
 plt.xlabel("Downrange distance [km]")
 plt.ylabel("Altitude [km]")
 # plt.gca().set_aspect("equal")
@@ -412,7 +420,7 @@ plt.gca().yaxis.label.set_color(color)
 # Perigee
 color = "C5"
 ax2 = plt.gca().twinx()
-ln2, = plt.plot(time[2:], peris, color=color, label="Perigee altitude")
+ln2, = plt.plot(time, perigee, color=color, label="Perigee altitude")
 plt.ylim(-6700, 300)
 plt.ylabel("Perigee altitude [km]")
 plt.gca().spines['left'].set_visible(False)
@@ -434,6 +442,51 @@ if not combined_plot:
     print("Wrote", fname)
   else:
     plt.show()
+
+# -----------------------
+
+# Save all computed data to file
+out_fname = "data/IFT2_all_data.csv"
+fout = open(out_fname, "w")
+strings = [
+  "Time [s]",
+  "Raw altitude [km]",
+  "Raw speed [m/s]",
+  "Smoothed altitude [km]",
+  "Smoothed speed [m/s]",
+  "Downrange distance [km]",
+  "Horizontal speed [m/s]",
+  "Vertical speed [m/s]",
+  "Net acceleration [m/s^2]",
+  "Horizontal acceleration [m/s^2]",
+  "Vertical acceleration [m/s^2]",
+  "Mach number",
+  "Dynamic pressure [kPa]",
+  "Specific orbital energy [MJ/kg]",
+  "Perigee altitude [km]",
+]
+fout.write(",".join(strings)+"\n")
+for i in range(len(time)):
+  strings = [
+    f"{time[i]:.0f}",
+    f"{raw_altitude[i]/1e3:.0f}",
+    f"{raw_speed[i]:.0f}",
+    f"{altitude[i]/1e3:.1f}",
+    f"{speed[i]:.1f}",
+    f"{hdist[i]/1e3:.1f}",
+    f"{hspeed[i]:.1f}",
+    f"{vspeed[i]:.1f}",    
+    f"{accel_numer[i]:.1f}",
+    f"{haccel[i]:.1f}",
+    f"{vaccel[i]:.1f}",
+    f"{Mach[i]:.1f}",
+    f"{dynpres[i]/1e3:.1f}",
+    f"{energy[i]/1e6:.1f}",
+    f"{perigee[i]:.1f}",
+  ]
+  fout.write(",".join(strings)+"\n")
+fout.close()
+print("Wrote", out_fname)
 
 # -----------------------
 
