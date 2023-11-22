@@ -15,13 +15,13 @@ from SolarSystem import Earth
 
 save = "--save" in sys.argv
 
-combined_plot = True
+combined_plot = False
 
 events = [
-  ["Max Q", 60.5, 0.15, -15],
-  ["MECO", 120+39, 0.7, -15],
-  ["Stage sep", 120+50, 0.7, 3],
-  ["Shutdown", 8*60+3, 0.6, -15],
+  ["Max Q", 60.5],
+  ["MECO", 120+41],
+  ["Stage sep", 120+50],
+  ["Shutdown", 8*60+6],
 ]
 
 # ==============================================================================
@@ -199,7 +199,9 @@ plt.grid(ls=":")
 
 # Events
 color = "0.5"
-for label, t, y, xoff in events:
+label_pos = {"Max Q": (0.7, -15), "MECO": (0.7, -15), "Stage sep": (0.7, 3), "Shutdown": (0.6, -15)}
+for label, t in events:
+  y, xoff = label_pos[label]
   plt.axvline(t, ls="--", color=color, zorder=-10)
   plt.annotate(label, xy=(t, y), xycoords=("data", "axes fraction"), xytext=(xoff, 0), textcoords="offset pixels", rotation=90, color=color)
 
@@ -257,8 +259,11 @@ plt.ylabel("Acceleration [gees]")
 
 # Events
 color = "0.7"
-for label, t, y, xoff in events:
+label_pos = {"Max Q": (0.7, -15), "MECO": (0.7, -15), "Stage sep": (0.7, 3), "Shutdown": (0.7, -15)}
+for label, t in events:
+  y, xoff = label_pos[label]
   plt.axvline(t, ls="--", color=color, zorder=-10)
+  plt.annotate(label, xy=(t, y), xycoords=("data", "axes fraction"), xytext=(xoff, 0), textcoords="offset pixels", rotation=90, color=color)
 
 if not combined_plot:
   plt.tight_layout()
@@ -280,6 +285,7 @@ else:
 plt.plot(time, speed_numer/1e3, color="0.5", label="Velocity magnitude")
 plt.plot(time, hspeed/1e3, color="C0", label="Horizontal velocity")
 plt.plot(time, vspeed/1e3, color="C1", label="Vertical velocity")
+y1, y2 = plt.ylim()
 plt.legend()
 plt.axhline(0, color="gray", zorder=-10)
 plt.xlabel("Time [s]")
@@ -287,10 +293,17 @@ plt.ylabel("Speed [km/s]")
 plt.title("Velocity components")
 plt.grid(ls=":")
 
+ax2 = plt.twinx()
+plt.ylim(y1*3600, y2*3600)
+plt.ylabel("Speed [km/h]")
+
 # Events
 color = "0.7"
-for label, t, y, xoff in events:
+label_pos = {"Max Q": (0.7, -15), "MECO": (0.7, -15), "Stage sep": (0.7, 3), "Shutdown": (0.7, -15)}
+for label, t in events:
+  y, xoff = label_pos[label]
   plt.axvline(t, ls="--", color=color, zorder=-10)
+  plt.annotate(label, xy=(t, y), xycoords=("data", "axes fraction"), xytext=(xoff, 0), textcoords="offset pixels", rotation=90, color=color)
 
 if not combined_plot:
   plt.tight_layout()
@@ -309,36 +322,51 @@ if combined_plot:
 else:
   plt.figure(figsize=(8,6))
 
-plt.plot(hdist, altitude/1e3, color="k")
+plt.plot(hdist/1e3, altitude/1e3, color="k")
 next_dot = 0; next_text = 60
+texts_pos = {60: (5,-3), 120: (5,-2), 180: (5,-2), 240: (5,-2), 300: (5,-5), 360: (-5,-12), 420: (-12,-12), 480: (-20,-12)}
 for i in range(len(time)):
-  x, y = hdist[i], altitude[i]/1e3
+  x, y = hdist[i]/1e3, altitude[i]/1e3
   if time[i] >= next_dot:
-    plt.scatter([x], [y], color="k", s=5)
-    next_dot += 10
+    s = 20 if time[i] >= next_text else 5
     if time[i] >= next_text:
-      plt.annotate(f"{time[i]:.0f}", xy=(x,y), xytext=(2,-2), textcoords="offset pixels", va="top", fontsize=10)
+      if next_text == 60: text = f"t = {time[i]:.0f} s"
+      else: text = f"{time[i]:.0f}"
+      pos = texts_pos[next_text]
+      plt.annotate(text, xy=(x,y), xytext=pos, textcoords="offset pixels", va="center", fontsize=10)
       next_text += 60
-  # Events
-  color = "0.7"
-  for label, t, _, _ in events:
-    if t == time[i]:
-      xoff = 30; yoff = 0
-      if label == "Max Q":
-        yoff = 20
-      elif label == "Shutdown":
-        xoff = -60
-        yoff = -30
-      plt.annotate(label, xy=(x,y), xytext=(xoff,yoff), textcoords="offset pixels", va="top", fontsize=10, color=color, arrowprops=dict(arrowstyle="->", color=color))
-plt.annotate("Dots every 10 seconds", xy=(0.01, 0.99), ha="left", va="top", fontsize=10, xycoords="axes fraction")
+    plt.scatter([x], [y], color="k", s=s)
+    next_dot += 10
+
+# Events
+color = "0.3"
+for label, t in events:
+  found = False
+  for i in range(len(time)-1):
+    if time[i] <= t < time[i+1]:
+      x, y = hdist[i]/1e3, altitude[i]/1e3
+      found = True
+      break
+  if not found:
+    x, y = hdist[-1]/1e3, altitude[-1]/1e3
+  xoff = 30; yoff = 0
+  if label == "Max Q":
+    yoff = 30
+  elif label == "Shutdown":
+    xoff = -60
+    yoff = -30
+  plt.annotate(label, xy=(x,y), xytext=(xoff,yoff), textcoords="offset pixels", va="top", fontsize=10, color=color, arrowprops=dict(arrowstyle="->", color=color))
+
+plt.annotate("Dots every 10 seconds", xy=(0.01, 0.99), ha="left", va="top", fontsize=10, xycoords="axes fraction", color="0.5")
 plt.axhline(0, color="gray", zorder=-10)
 x1, x2 = plt.xlim()
 plt.ylim(-1, 155)
 plt.grid(ls=":")
-plt.title("Trajectory profile (planar, unequal aspect)")
+plt.title("Trajectory profile")
 plt.xlabel("Downrange distance [km]")
 plt.ylabel("Altitude [km]")
 # plt.gca().set_aspect("equal")
+
 
 if not combined_plot:
   plt.tight_layout()
@@ -382,8 +410,11 @@ plt.legend(handles=[ln1,ln2], loc="upper right")
 
 # Events
 color = "0.7"
-for label, t, y, xoff in events:
+label_pos = {"Max Q": (0.7, -15), "MECO": (0.5, -15), "Stage sep": (0.5, 3), "Shutdown": (0.7, -15)}
+for label, t in events:
+  y, xoff = label_pos[label]
   plt.axvline(t, ls="--", color=color, zorder=-10)
+  plt.annotate(label, xy=(t, y), xycoords=("data", "axes fraction"), xytext=(xoff, 0), textcoords="offset pixels", rotation=90, color=color)
 
 if not combined_plot:
   plt.tight_layout()
@@ -402,12 +433,12 @@ else:
   plt.figure(figsize=(8,6))
 
 # Orbital energy
-color = "C6"
+color = "C5"
 ln1, = plt.plot(time, energy/1e6, color=color, label="Orbital energy")
 plt.axhline(E_surf/1e6, ls="-", color=color)
 plt.annotate("Energy at surface", xy=(0.98, E_surf/1e6), xycoords=("axes fraction", "data"), xytext=(0, 5), textcoords="offset pixels", color=color, ha="right")
 plt.axhline(E_orbit/1e6, ls="-", color=color)
-plt.annotate("Energy for orbit (100 km)", xy=(0.98, E_orbit/1e6), xycoords=("axes fraction", "data"), xytext=(0, 5), textcoords="offset pixels", color=color, ha="right")
+plt.annotate("Energy for 100 km orbit", xy=(0.98, E_orbit/1e6), xycoords=("axes fraction", "data"), xytext=(0, 5), textcoords="offset pixels", color=color, ha="right")
 plt.xlabel("Time [s]")
 plt.ylabel("Specific orbital energy [MJ/kg]")
 plt.title("Orbital Energy and Perigee")
@@ -418,7 +449,7 @@ plt.gca().yaxis.label.set_color(color)
 # plt.legend(handles=[ln1,ln2])
 
 # Perigee
-color = "C5"
+color = "C6"
 ax2 = plt.gca().twinx()
 ln2, = plt.plot(time, perigee, color=color, label="Perigee altitude")
 plt.ylim(-6700, 300)
@@ -431,8 +462,11 @@ plt.legend(handles=[ln1,ln2], loc="upper left")
 
 # Events
 color = "0.7"
-for label, t, y, xoff in events:
+label_pos = {"Max Q": (0.7, -15), "MECO": (0.7, -15), "Stage sep": (0.7, 3), "Shutdown": (0.3, -15)}
+for label, t in events:
+  y, xoff = label_pos[label]
   plt.axvline(t, ls="--", color=color, zorder=-10)
+  plt.annotate(label, xy=(t, y), xycoords=("data", "axes fraction"), xytext=(xoff, 0), textcoords="offset pixels", rotation=90, color=color)
 
 if not combined_plot:
   plt.tight_layout()
@@ -445,48 +479,50 @@ if not combined_plot:
 
 # -----------------------
 
-# Save all computed data to file
-out_fname = "data/IFT2_all_data.csv"
-fout = open(out_fname, "w")
-strings = [
-  "Time [s]",
-  "Raw altitude [km]",
-  "Raw speed [m/s]",
-  "Smoothed altitude [km]",
-  "Smoothed speed [m/s]",
-  "Downrange distance [km]",
-  "Horizontal speed [m/s]",
-  "Vertical speed [m/s]",
-  "Net acceleration [m/s^2]",
-  "Horizontal acceleration [m/s^2]",
-  "Vertical acceleration [m/s^2]",
-  "Mach number",
-  "Dynamic pressure [kPa]",
-  "Specific orbital energy [MJ/kg]",
-  "Perigee altitude [km]",
-]
-fout.write(",".join(strings)+"\n")
-for i in range(len(time)):
+if save:
+
+  # Save all computed data to file
+  out_fname = "data/IFT2_full_data.csv"
+  fout = open(out_fname, "w")
   strings = [
-    f"{time[i]:.0f}",
-    f"{raw_altitude[i]/1e3:.0f}",
-    f"{raw_speed[i]:.0f}",
-    f"{altitude[i]/1e3:.1f}",
-    f"{speed[i]:.1f}",
-    f"{hdist[i]/1e3:.1f}",
-    f"{hspeed[i]:.1f}",
-    f"{vspeed[i]:.1f}",    
-    f"{accel_numer[i]:.1f}",
-    f"{haccel[i]:.1f}",
-    f"{vaccel[i]:.1f}",
-    f"{Mach[i]:.1f}",
-    f"{dynpres[i]/1e3:.1f}",
-    f"{energy[i]/1e6:.1f}",
-    f"{perigee[i]:.1f}",
+    "Time [s]",
+    "Raw altitude [km]",
+    "Raw speed [m/s]",
+    "Smoothed altitude [km]",
+    "Smoothed speed [m/s]",
+    "Downrange distance [km]",
+    "Horizontal speed [m/s]",
+    "Vertical speed [m/s]",
+    "Net acceleration [m/s^2]",
+    "Horizontal acceleration [m/s^2]",
+    "Vertical acceleration [m/s^2]",
+    "Mach number",
+    "Dynamic pressure [kPa]",
+    "Specific orbital energy [MJ/kg]",
+    "Perigee altitude [km]",
   ]
   fout.write(",".join(strings)+"\n")
-fout.close()
-print("Wrote", out_fname)
+  for i in range(len(time)):
+    strings = [
+      f"{time[i]:.0f}",
+      f"{raw_altitude[i]/1e3:.0f}",
+      f"{raw_speed[i]:.0f}",
+      f"{altitude[i]/1e3:.1f}",
+      f"{speed[i]:.1f}",
+      f"{hdist[i]/1e3:.1f}",
+      f"{hspeed[i]:.1f}",
+      f"{vspeed[i]:.1f}",    
+      f"{accel_numer[i]:.1f}",
+      f"{haccel[i]:.1f}",
+      f"{vaccel[i]:.1f}",
+      f"{Mach[i]:.1f}",
+      f"{dynpres[i]/1e3:.1f}",
+      f"{energy[i]/1e6:.1f}",
+      f"{perigee[i]:.1f}",
+    ]
+    fout.write(",".join(strings)+"\n")
+  fout.close()
+  print("Wrote", out_fname)
 
 # -----------------------
 
